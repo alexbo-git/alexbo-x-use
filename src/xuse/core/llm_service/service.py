@@ -46,7 +46,21 @@ class LLMService:
             # swallowed by the broad except below into a silent None.
             raise ValueError("pass only one of model_name/model")
         model = model_name or model_param or self.default_model
-        call_params.setdefault("max_tokens", 1200)  # reasoning-model headroom
+        # OpenAI GPT-5+/o-series chat models use max_completion_tokens.
+        # Keep max_tokens for older/OpenAI-compatible providers.
+        is_modern_openai_chat = (
+            str(model).startswith(("gpt-5", "gpt-6", "o1", "o3", "o4"))
+            and "api.openai.com" in str(self.resolved.get("base_url", ""))
+        )
+        if is_modern_openai_chat:
+            if "max_tokens" in call_params and "max_completion_tokens" not in call_params:
+                call_params["max_completion_tokens"] = call_params.pop("max_tokens")
+            call_params.setdefault("max_completion_tokens", 1200)
+            token_param = "max_completion_tokens"
+        else:
+            call_params.setdefault("max_tokens", 1200)
+            token_param = "max_tokens"
+
         built_messages = messages if messages is not None else (
             ([{"role": "system", "content": system_prompt}] if system_prompt else [])
             + [{"role": "user", "content": prompt}]
@@ -66,17 +80,17 @@ class LLMService:
                 retryable = (
                     finish_reason == "length"
                     and attempt == 0
-                    and call_params.get("max_tokens", 0) < 4000
+                    and call_params.get(token_param, 0) < 4000
                 )
                 if not retryable:
                     logger.warning(
-                        "LLM returned empty content (model=%s, finish_reason=%s, max_tokens=%s).",
-                        model, finish_reason, call_params.get("max_tokens"))
+                        "LLM returned empty content (model=%s, finish_reason=%s, %s=%s).",
+                        model, finish_reason, token_param, call_params.get(token_param))
                     return text
-                call_params["max_tokens"] = max(call_params.get("max_tokens", 1200) * 2, 1200)
+                call_params[token_param] = max(call_params.get(token_param, 1200) * 2, 1200)
                 logger.warning(
-                    "LLM returned empty content (finish_reason=length); retrying with max_tokens=%s.",
-                    call_params["max_tokens"])
+                    "LLM returned empty content (finish_reason=length); retrying with %s=%s.",
+                    token_param, call_params[token_param])
             return text  # second attempt also empty after the bump
         except Exception as e:
             logger.error("LLM generation failed: %s", e, exc_info=True)
