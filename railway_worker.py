@@ -50,64 +50,64 @@ LIKE_TARGET = int(os.getenv("WORKER_LIKE_DAILY_TARGET", "30"))
 KEYWORDS_PER_CYCLE = max(1, int(os.getenv("WORKER_KEYWORDS_PER_CYCLE", "2")))
 
 LANES = {
-    "smb_verticals": {
-        "weight": 35,
-        "reply_cap": 8,
-        "keywords": [
-            "home service business",
-            "HVAC business",
-            "plumbing business",
-            "dental practice growth",
-            "law firm automation",
-            "property management automation",
-            "small business operations",
-            "local service business growth"
-        ],
-    },
-    "business_pain": {
-        "weight": 25,
-        "reply_cap": 6,
-        "keywords": [
-            "inbound leads",
-            "lead response time",
-            "customer service automation",
-            "customer experience",
-            "appointment booking",
-            "after hours customer service",
-            "missed leads",
-            "sales automation"
-        ],
-    },
-    "voice_ai": {
-        "weight": 20,
-        "reply_cap": 5,
+    "direct_intent": {
+        "weight": 40,
+        "reply_cap": 9,
         "keywords": [
             "AI receptionist",
             "virtual receptionist",
             "AI answering service",
-            "voice AI",
+            "AI phone answering",
             "AI phone agent",
-            "AI call automation"
+            "standard téléphonique IA",
+            "réceptionniste IA",
+            "standardiste IA",
+            "agent vocal IA"
         ],
     },
-    "saas_builders": {
-        "weight": 15,
+    "business_pain": {
+        "weight": 30,
+        "reply_cap": 7,
+        "keywords": [
+            "missed calls",
+            "missing calls",
+            "after hours calls",
+            "can't answer the phone",
+            "losing leads",
+            "missed leads",
+            "lead response time",
+            "appointment booking",
+            "customer calls",
+            "appel manqué",
+            "appels manqués",
+            "prise de rendez-vous"
+        ],
+    },
+    "smb_verticals": {
+        "weight": 20,
+        "reply_cap": 5,
+        "keywords": [
+            "HVAC business",
+            "plumbing business",
+            "dental practice",
+            "medical practice",
+            "law firm",
+            "property management",
+            "real estate agency",
+            "home service business"
+        ],
+    },
+    "alternatives": {
+        "weight": 10,
         "reply_cap": 3,
         "keywords": [
-            "AI agents",
-            "AI automation",
-            "SaaS founders",
-            "indie hackers",
-            "building SaaS"
-        ],
-    },
-    "seo_geo": {
-        "weight": 5,
-        "reply_cap": 2,
-        "keywords": [
-            "SEO SaaS",
-            "GEO SEO",
-            "AI search optimization"
+            "answering service",
+            "virtual answering service",
+            "phone answering service",
+            "call answering service",
+            "receptionist service",
+            "standard téléphonique",
+            "secrétariat téléphonique"
         ],
     },
 }
@@ -145,8 +145,11 @@ Language:
 - English is the primary audience; French is acceptable when naturally encountered.
 
 Targeting:
-- Build a relevant network around small-business operators, SaaS builders, AI operators, growth/SEO people, customer-service/sales operators and voice-AI practitioners.
-- Adjacent SaaS, SEO, AI and small-business topics are valid; do not restrict yourself to phone-call discussions.
+- Prioritize explicit buying intent around AI receptionists, AI answering services, virtual receptionists and AI phone agents, in English or French.
+- Next prioritize concrete phone-related business pain: missed calls, after-hours calls, lost leads, slow lead response and appointment-booking friction.
+- SMB vertical conversations are useful only when there is a plausible connection to inbound calls, leads, availability, reception or appointment handling.
+- Answering-service and receptionist-service conversations are valid when they reveal evaluation, comparison, cost or service pain.
+- Generic SaaS-builder, Product Hunt, SEO/GEO and broad AI-agent chatter is not a target unless it directly overlaps with these problems.
 """
 
 logging.basicConfig(
@@ -255,8 +258,8 @@ def write_account_config(selected_keywords: list[str], cookie_path: Path) -> Non
             "max_likes_per_run": 3,
             "like_tweets_from_feed": False,
             "enable_thread_analysis": True,
-            "enable_relevance_filter_keyword_replies": True,
-            "relevance_threshold_keyword_replies": 0.58,
+            "enable_relevance_filter_keyword_replies": False,
+            "relevance_threshold_keyword_replies": 0.0,
             "enable_relevance_filter_likes": True,
             "relevance_threshold_likes": 0.45,
             "enable_keyword_retweets": False,
