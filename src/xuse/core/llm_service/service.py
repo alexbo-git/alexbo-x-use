@@ -57,6 +57,23 @@ class LLMService:
                 call_params["max_completion_tokens"] = call_params.pop("max_tokens")
             call_params.setdefault("max_completion_tokens", 1200)
             token_param = "max_completion_tokens"
+
+            # GPT-5 family reasoning models prior to GPT-5.1 do not support
+            # custom sampling controls in Chat Completions. In particular,
+            # gpt-5-nano rejects non-default temperature/top_p values.
+            # Strip these centrally so every x-use path (reply generation,
+            # thread analysis, structured analysis, etc.) is API-compatible.
+            if str(model).startswith("gpt-5") and not str(model).startswith(("gpt-5.1", "gpt-5.2", "gpt-5.3", "gpt-5.4", "gpt-5.5", "gpt-5.6")):
+                for unsupported_param in (
+                    "temperature",
+                    "top_p",
+                    "frequency_penalty",
+                    "presence_penalty",
+                    "logprobs",
+                    "top_logprobs",
+                    "seed",
+                ):
+                    call_params.pop(unsupported_param, None)
         else:
             call_params.setdefault("max_tokens", 1200)
             token_param = "max_tokens"
