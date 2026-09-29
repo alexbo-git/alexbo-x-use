@@ -482,8 +482,13 @@ class TwitterOrchestrator:
                         reply_prompt_context = (
                             "This tweet is part of a thread." if scraped_tweet_to_reply.is_confirmed_thread else "This is a standalone tweet."
                         )
+                        persona_context = (account.persona or "").strip()
                         reply_prompt = (
+                            f"You are posting from this X account. Follow this persona and engagement style exactly:\n"
+                            f"{persona_context or 'Be concise, useful, conversational, and specific.'}\n\n"
                             f"Write a concise, natural reply under 270 characters. {reply_prompt_context} "
+                            f"Add genuine value: a concrete observation, useful nuance, informed disagreement, or relevant question. "
+                            f"Never write generic praise. Never force a product mention. "
                             f"Avoid hashtags, links, and emojis unless essential. One short paragraph.\n\n"
                             f"Original tweet by @{scraped_tweet_to_reply.user_handle or 'user'}:\n"
                             f"\"{scraped_tweet_to_reply.text_content}\"\n\nYour reply:"
