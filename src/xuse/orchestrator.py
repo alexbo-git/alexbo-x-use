@@ -526,7 +526,18 @@ class TwitterOrchestrator:
 
                         logger.info(f"[{account.account_id}] Attempting to post reply to tweet {scraped_tweet_to_reply.tweet_id}...")
                         reply_success = await publisher.reply_to_tweet(scraped_tweet_to_reply, generated_reply_text)
-                        metrics.log_event('reply', 'success' if reply_success else 'failure', {'tweet_id': scraped_tweet_to_reply.tweet_id})
+                        metrics.log_event(
+                            'reply',
+                            'success' if reply_success else 'failure',
+                            {
+                                'tweet_id': scraped_tweet_to_reply.tweet_id,
+                                'tweet_url': str(scraped_tweet_to_reply.tweet_url) if scraped_tweet_to_reply.tweet_url else None,
+                                'author_handle': scraped_tweet_to_reply.user_handle,
+                                'original_text': scraped_tweet_to_reply.text_content,
+                                'reply_text': generated_reply_text,
+                                'keyword': keyword,
+                            },
+                        )
                         if reply_success:
                             metrics.increment('replies')
                         else:
@@ -641,7 +652,17 @@ class TwitterOrchestrator:
 
                             logger.info(f"[{account.account_id}] Attempting to like tweet {tweet_to_like.tweet_id} from URL: {tweet_to_like.tweet_url}")
                             like_success = await engagement.like_tweet(tweet_id=tweet_to_like.tweet_id, tweet_url=str(tweet_to_like.tweet_url) if tweet_to_like.tweet_url else None)
-                            metrics.log_event('like', 'success' if like_success else 'failure', {'tweet_id': tweet_to_like.tweet_id})
+                            metrics.log_event(
+                                'like',
+                                'success' if like_success else 'failure',
+                                {
+                                    'tweet_id': tweet_to_like.tweet_id,
+                                    'tweet_url': str(tweet_to_like.tweet_url) if tweet_to_like.tweet_url else None,
+                                    'author_handle': tweet_to_like.user_handle,
+                                    'original_text': tweet_to_like.text_content,
+                                    'keyword': keyword,
+                                },
+                            )
                             
                             if like_success:
                                 self.file_handler.save_processed_action_key(action_key, timestamp=datetime.now().isoformat())
