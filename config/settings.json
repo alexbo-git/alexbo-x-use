@@ -9,12 +9,12 @@
       "enable_relevance_filter": {
         "competitor_reposts": true,
         "likes": true,
-        "keyword_replies": true
+        "keyword_replies": false
       },
       "thresholds": {
         "competitor_reposts_min": 0.5,
         "likes_min": 0.45,
-        "keyword_replies_min": 0.58
+        "keyword_replies_min": 0
       }
     },
     "engagement_decision": {
