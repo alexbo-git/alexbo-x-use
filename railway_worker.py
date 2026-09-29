@@ -44,34 +44,68 @@ REPLY_TARGET = int(os.getenv("WORKER_REPLY_DAILY_TARGET", "20"))
 LIKE_TARGET = int(os.getenv("WORKER_LIKE_DAILY_TARGET", "30"))
 KEYWORDS_PER_CYCLE = max(1, int(os.getenv("WORKER_KEYWORDS_PER_CYCLE", "2")))
 
-DEFAULT_KEYWORDS = [
-    "AI agents",
-    "AI automation",
-    "SaaS founders",
-    "indie hackers",
-    "building SaaS",
-    "small business automation",
-    "small business growth",
-    "customer service automation",
-    "customer experience",
-    "sales automation",
-    "inbound leads",
-    "lead response time",
-    "appointment booking",
-    "AI receptionist",
-    "virtual receptionist",
-    "AI answering service",
-    "voice AI",
-    "AI phone agent",
-    "home service business",
-    "HVAC business",
-    "plumbing business",
-    "dental practice growth",
-    "law firm automation",
-    "property management automation",
-    "SEO SaaS",
-    "GEO SEO"
-]
+LANES = {
+    "smb_verticals": {
+        "weight": 35,
+        "reply_cap": 8,
+        "keywords": [
+            "home service business",
+            "HVAC business",
+            "plumbing business",
+            "dental practice growth",
+            "law firm automation",
+            "property management automation",
+            "small business operations",
+            "local service business growth"
+        ],
+    },
+    "business_pain": {
+        "weight": 25,
+        "reply_cap": 6,
+        "keywords": [
+            "inbound leads",
+            "lead response time",
+            "customer service automation",
+            "customer experience",
+            "appointment booking",
+            "after hours customer service",
+            "missed leads",
+            "sales automation"
+        ],
+    },
+    "voice_ai": {
+        "weight": 20,
+        "reply_cap": 5,
+        "keywords": [
+            "AI receptionist",
+            "virtual receptionist",
+            "AI answering service",
+            "voice AI",
+            "AI phone agent",
+            "AI call automation"
+        ],
+    },
+    "saas_builders": {
+        "weight": 15,
+        "reply_cap": 3,
+        "keywords": [
+            "AI agents",
+            "AI automation",
+            "SaaS founders",
+            "indie hackers",
+            "building SaaS"
+        ],
+    },
+    "seo_geo": {
+        "weight": 5,
+        "reply_cap": 2,
+        "keywords": [
+            "SEO SaaS",
+            "GEO SEO",
+            "AI search optimization"
+        ],
+    },
+}
 
 DEFAULT_PERSONA = """You are Alex, founder of Kalyvox, an AI receptionist / phone-answering SaaS for small businesses.
 You are a SaaS builder who works hands-on on acquisition, SEO/GEO, AI agents, customer experience, inbound lead handling and automation.
@@ -103,13 +137,36 @@ def env_required(name: str) -> str:
     return value
 
 
-def keywords() -> list[str]:
+def lane_definitions() -> dict:
     raw = os.getenv("X_TARGET_KEYWORDS", "").strip()
     if raw:
         parsed = [item.strip() for item in raw.split(";") if item.strip()]
         if parsed:
-            return parsed
-    return DEFAULT_KEYWORDS
+            return {
+                "custom": {
+                    "weight": 100,
+                    "reply_cap": REPLY_TARGET,
+                    "keywords": parsed,
+                }
+            }
+    return LANES
+
+
+def choose_lane(state: dict, lanes: dict) -> tuple[str, dict]:
+    lane_stats = state.setdefault("lanes", {})
+    eligible = []
+    weights = []
+    for name, cfg in lanes.items():
+        stats = lane_stats.setdefault(name, {"replies": 0, "likes": 0, "cycles": 0})
+        cap = int(cfg.get("reply_cap", REPLY_TARGET))
+        if stats.get("replies", 0) >= cap:
+            continue
+        eligible.append((name, cfg))
+        weights.append(max(1, int(cfg.get("weight", 1))))
+    if not eligible:
+        eligible = list(lanes.items())
+        weights = [max(1, int(cfg.get("weight", 1))) for _, cfg in eligible]
+    return random.choices(eligible, weights=weights, k=1)[0]
 
 
 def persona() -> str:
@@ -215,6 +272,7 @@ def load_state() -> dict:
         "errors": 0,
         "cycles": 0,
         "pause_until": None,
+        "lanes": {},
     }
     if not STATE_FILE.exists():
         return default
@@ -243,10 +301,24 @@ def run_pipeline(name: str) -> int:
     return result.returncode
 
 
-def update_state_from_metrics(state: dict, before: dict[str, int], after: dict[str, int]) -> None:
-    state["replies"] += max(0, after["replies"] - before["replies"])
-    state["likes"] += max(0, after["likes"] - before["likes"])
-    state["errors"] += max(0, after["errors"] - before["errors"])
+def update_state_from_metrics(
+    state: dict,
+    before: dict[str, int],
+    after: dict[str, int],
+    lane_name: str | None = None,
+) -> None:
+    reply_delta = max(0, after["replies"] - before["replies"])
+    like_delta = max(0, after["likes"] - before["likes"])
+    error_delta = max(0, after["errors"] - before["errors"])
+    state["replies"] += reply_delta
+    state["likes"] += like_delta
+    state["errors"] += error_delta
+    if lane_name:
+        lane = state.setdefault("lanes", {}).setdefault(
+            lane_name, {"replies": 0, "likes": 0, "cycles": 0}
+        )
+        lane["replies"] += reply_delta
+        lane["likes"] += like_delta
 
 
 def in_active_window(now: datetime) -> bool:
@@ -343,6 +415,11 @@ def _dashboard_payload() -> dict:
         "hours": {"start": START_HOUR, "end": END_HOUR, "timezone": TZ.key},
         "current_keywords": account.get("target_keywords_override", []),
         "recent_activity": read_activity(30),
+        "lanes": state.get("lanes", {}),
+        "lane_config": {
+            name: {"weight": cfg["weight"], "reply_cap": cfg["reply_cap"]}
+            for name, cfg in lane_definitions().items()
+        },
     }
 
 
@@ -413,6 +490,16 @@ code{{word-break:break-word}}
 <div class="card"><small>Errors today</small><div class="big">{p["today"]["errors"]}</div></div>
 </div>
 <div class="card"><small>Current keywords</small><p><code>{html.escape(kws)}</code></p></div>
+<div class="card"><small>Lane mix today</small>
+<div style="margin-top:10px">
+{"".join(
+    f'<div style="padding:6px 0"><b>{html.escape(name)}</b> — '
+    f'{int((p["lanes"].get(name) or {}).get("replies", 0))} replies / {int(cfg.get("reply_cap", 0))} cap · '
+    f'{int((p["lanes"].get(name) or {}).get("likes", 0))} likes · '
+    f'{int((p["lanes"].get(name) or {}).get("cycles", 0))} cycles</div>'
+    for name, cfg in p["lane_config"].items()
+)}
+</div></div>
 <div class="card"><small>Recent activity</small>
 <div style="margin-top:10px">
 {"".join(
@@ -477,9 +564,9 @@ def main() -> None:
     env_required("OPENAI_API_KEY")
     start_admin_server()
     cookie_path = write_cookie_file()
-    pool = keywords()
-    if not pool:
-        raise RuntimeError("No target keywords configured")
+    lanes = lane_definitions()
+    if not lanes:
+        raise RuntimeError("No targeting lanes configured")
 
     log.info(
         "Kalyvox X worker started: replies/day=%s likes/day=%s active=%02d:00-%02d:00 %s",
@@ -534,9 +621,17 @@ def main() -> None:
             interruptible_sleep(1800)
             continue
 
-        selected = random.sample(pool, k=min(KEYWORDS_PER_CYCLE, len(pool)))
+        lane_name, lane_cfg = choose_lane(state, lanes)
+        lane_keywords = lane_cfg["keywords"]
+        selected = random.sample(
+            lane_keywords, k=min(KEYWORDS_PER_CYCLE, len(lane_keywords))
+        )
         write_account_config(selected, cookie_path)
-        log.info("Cycle keywords: %s", " | ".join(selected))
+        state.setdefault("lanes", {}).setdefault(
+            lane_name, {"replies": 0, "likes": 0, "cycles": 0}
+        )["cycles"] += 1
+        save_state(state)
+        log.info("Cycle lane=%s keywords=%s", lane_name, " | ".join(selected))
 
         before = read_metrics()
         return_codes: list[int] = []
@@ -545,13 +640,13 @@ def main() -> None:
             return_codes.append(run_pipeline("keyword_replies"))
 
         middle = read_metrics()
-        update_state_from_metrics(state, before, middle)
+        update_state_from_metrics(state, before, middle, lane_name)
 
         if state["likes"] < LIKE_TARGET:
             return_codes.append(run_pipeline("likes"))
 
         after = read_metrics()
-        update_state_from_metrics(state, middle, after)
+        update_state_from_metrics(state, middle, after, lane_name)
         state["cycles"] += 1
         save_state(state)
 
