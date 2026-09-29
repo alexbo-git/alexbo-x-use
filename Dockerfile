@@ -25,4 +25,6 @@ RUN pip install --no-cache-dir . \
     && mkdir -p /app/data/cookies /app/data/metrics /app/logs \
     && x-use --help > /dev/null
 
+EXPOSE 8080
+
 CMD ["python", "railway_worker.py"]
