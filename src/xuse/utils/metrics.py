@@ -20,7 +20,7 @@ class MetricsRecorder:
     """
     Records per-account metrics and structured events.
     - JSON summary at data/metrics/<account_id>.json
-    - JSONL events at logs/accounts/<account_id>.jsonl
+    - JSONL events at data/activity/<account_id>.jsonl
     Paths are relative to project root.
     """
 
@@ -31,7 +31,7 @@ class MetricsRecorder:
         project_root = PROJECT_ROOT
         self.metrics_dir = project_root / 'data' / 'metrics'
         self.metrics_dir.mkdir(parents=True, exist_ok=True)
-        self.logs_dir = project_root / 'logs' / 'accounts'
+        self.logs_dir = project_root / 'data' / 'activity'
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.summary_path = self.metrics_dir / f'{self.account_id}.json'
         self.events_path = self.logs_dir / f'{self.account_id}.jsonl'
