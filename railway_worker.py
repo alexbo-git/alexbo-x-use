@@ -470,7 +470,7 @@ def main() -> None:
                 if now < pause_dt:
                     sleep_s = min(1800, max(60, int((pause_dt - now).total_seconds())))
                     log.warning("Worker paused after errors until %s", pause_dt.isoformat())
-                    time.sleep(sleep_s)
+                    interruptible_sleep(sleep_s)
                     continue
                 state["pause_until"] = None
                 save_state(state)
