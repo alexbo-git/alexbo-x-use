@@ -650,7 +650,7 @@ class AdminHandler(BaseHTTPRequestHandler):
         p = _dashboard_payload()
         paused = "PAUSED" if p["paused"] else "RUNNING"
         kws = ", ".join(p["current_keywords"]) or "none yet"
-        html = f"""<!doctype html>
+        page_html = f"""<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Kalyvox X Agent</title>
 <style>
@@ -721,7 +721,7 @@ code{{word-break:break-word}}
 <form method="post" action="/resume" style="display:inline"><button class="resume">Resume</button></form>
 </div>
 </body></html>"""
-        body = html.encode("utf-8")
+        body = page_html.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
