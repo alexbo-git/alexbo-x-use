@@ -15,6 +15,7 @@ import subprocess
 import time
 import base64
 import hmac
+import html
 import threading
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -301,6 +302,25 @@ def _auth_ok(header: str | None) -> bool:
         return False
 
 
+def read_activity(limit: int = 50) -> list[dict]:
+    path = DATA_DIR / "activity" / f"{ACCOUNT_ID}.jsonl"
+    if not path.exists():
+        return []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        items = []
+        for line in lines[-max(1, limit):]:
+            try:
+                items.append(json.loads(line))
+            except Exception:
+                continue
+        items.reverse()
+        return items
+    except Exception:
+        log.exception("Could not read activity log")
+        return []
+
+
 def _dashboard_payload() -> dict:
     state = load_state()
     control = load_control()
@@ -322,6 +342,7 @@ def _dashboard_payload() -> dict:
         "targets": {"replies": REPLY_TARGET, "likes": LIKE_TARGET},
         "hours": {"start": START_HOUR, "end": END_HOUR, "timezone": TZ.key},
         "current_keywords": account.get("target_keywords_override", []),
+        "recent_activity": read_activity(30),
     }
 
 
@@ -361,6 +382,9 @@ class AdminHandler(BaseHTTPRequestHandler):
         if self.path == "/status":
             self._json(_dashboard_payload())
             return
+        if self.path == "/activity":
+            self._json({"activity": read_activity(100)})
+            return
         if self.path != "/":
             self._json({"error": "not found"}, 404)
             return
@@ -388,7 +412,26 @@ code{{word-break:break-word}}
 <div class="card"><small>Cycles</small><div class="big">{p["today"]["cycles"]}</div></div>
 <div class="card"><small>Errors today</small><div class="big">{p["today"]["errors"]}</div></div>
 </div>
-<div class="card"><small>Current keywords</small><p><code>{kws}</code></p></div>
+<div class="card"><small>Current keywords</small><p><code>{html.escape(kws)}</code></p></div>
+<div class="card"><small>Recent activity</small>
+<div style="margin-top:10px">
+{"".join(
+    f'<div style="padding:10px 0;border-top:1px solid #28324b">'
+    f'<b>{html.escape(str(item.get("action", ""))).upper()}</b> '
+    f'<small>{html.escape(str(item.get("result", "")))} · {html.escape(str(item.get("ts", "")))}</small>'
+    f'<div style="margin-top:6px">{html.escape(str((item.get("meta") or {}).get("original_text") or ""))}</div>'
+    + (
+        f'<div style="margin-top:6px;color:#74b9ff">↳ {html.escape(str((item.get("meta") or {}).get("reply_text") or ""))}</div>'
+        if (item.get("meta") or {}).get("reply_text") else ""
+      )
+    + (
+        f'<div style="margin-top:5px"><a style="color:#9ecbff" href="{html.escape(str((item.get("meta") or {}).get("tweet_url")))}" target="_blank" rel="noopener">Open on X</a></div>'
+        if (item.get("meta") or {}).get("tweet_url") else ""
+      )
+    + '</div>'
+    for item in p["recent_activity"]
+) or '<div style="padding-top:8px"><small>No activity yet.</small></div>'}
+</div></div>
 <div class="card">
 <form method="post" action="/run-now" style="display:inline"><button class="run">Run now</button></form>
 <form method="post" action="/pause" style="display:inline"><button class="pause">Pause</button></form>
