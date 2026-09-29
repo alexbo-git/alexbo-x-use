@@ -763,6 +763,13 @@ def main() -> None:
     lanes = lane_definitions()
     if not lanes:
         raise RuntimeError("No targeting lanes configured")
+    # Ensure x-use's ConfigLoader always sees a valid accounts file, even
+    # before the first engagement cycle (e.g. during the growth snapshot).
+    first_lane = next(iter(lanes.values()))
+    write_account_config(
+        list(first_lane.get("keywords", []))[:KEYWORDS_PER_CYCLE],
+        cookie_path,
+    )
 
     log.info(
         "Kalyvox X worker started: replies/day=%s likes/day=%s active=%02d:00-%02d:00 %s",
