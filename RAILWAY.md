@@ -98,3 +98,9 @@ Available controls:
 - buttons: Run now, Pause, Resume
 
 The admin never exposes X cookies or the OpenAI key.
+
+## Growth measurement
+
+The worker records one profile snapshot per day in `/app/data/growth/` and exposes it at `/growth` and in the dashboard.
+
+It tracks current followers/following, 1-day and 7-day follower deltas, and 7-day followers gained per 10 automated replies. Set `X_HANDLE` (without @) if automatic handle detection ever fails.
