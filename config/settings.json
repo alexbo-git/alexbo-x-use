@@ -1,68 +1,72 @@
 {
   "twitter_automation": {
     "response_interval_seconds": 300,
-    "max_tweets_per_keyword_scrape": 15,
-    "media_directory": "media_files",
-    "processed_tweets_file": "processed_tweets_log.csv",
+    "max_tweets_per_keyword_scrape": 10,
+    "media_directory": "data/media_files",
+    "processed_tweets_file": "data/processed_tweets_log.csv",
     "cookie_file_per_account_in_accounts_json": true,
     "analysis_config": {
       "enable_relevance_filter": {
         "competitor_reposts": true,
         "likes": true,
-        "keyword_replies": false
+        "keyword_replies": true
       },
       "thresholds": {
-        "competitor_reposts_min": 0.35,
-        "likes_min": 0.3
+        "competitor_reposts_min": 0.5,
+        "likes_min": 0.45,
+        "keyword_replies_min": 0.58
       }
     },
     "engagement_decision": {
       "enabled": false,
       "use_sentiment": true,
       "thresholds": {
-        "quote_min": 0.75,
-        "retweet_min": 0.5,
-        "repost_min": 0.35
+        "quote_min": 0.85,
+        "retweet_min": 0.7,
+        "repost_min": 0.6
       }
     },
     "action_config": {
-      "min_delay_between_actions_seconds": 60,
-      "max_delay_between_actions_seconds": 180,
-      "enable_competitor_reposts": true,
-      "max_posts_per_competitor_run": 1,
+      "min_delay_between_actions_seconds": 90,
+      "max_delay_between_actions_seconds": 240,
+      "enable_competitor_reposts": false,
+      "max_posts_per_competitor_run": 0,
       "repost_only_tweets_with_media": false,
-      "min_likes_for_repost_candidate": 10,
-      "min_retweets_for_repost_candidate": 2,
+      "min_likes_for_repost_candidate": 0,
+      "min_retweets_for_repost_candidate": 0,
       "competitor_post_interaction_type": "retweet",
-      "prompt_for_quote_tweet_from_competitor": "Interesting perspective by {user_handle}: '{tweet_text}'. What are your thoughts? #AI #Discussion",
       "enable_keyword_replies": false,
-      "max_replies_per_keyword_run": 2,
-      "reply_only_to_recent_tweets_hours": 24,
+      "max_replies_per_keyword_run": 1,
+      "reply_only_to_recent_tweets_hours": 8,
       "avoid_replying_to_own_tweets": true,
       "enable_content_curation_posts": false,
-      "max_curated_posts_per_run": 1,
+      "max_curated_posts_per_run": 0,
       "enable_liking_tweets": false,
-      "max_likes_per_run": 5,
+      "max_likes_per_run": 3,
       "like_tweets_from_keywords": null,
       "like_tweets_from_feed": false,
       "enable_thread_analysis": true,
       "llm_settings_for_post": {
-        "service_preference": "gemini",
-        "model_name_override": "gemini-2.5-flash",
-        "max_tokens": 150,
+        "max_tokens": 300,
         "temperature": 0.7
       },
       "llm_settings_for_reply": {
-        "service_preference": "gemini",
-        "max_tokens": 100,
-        "temperature": 0.75
+        "max_tokens": 300,
+        "temperature": 0.78
       },
       "llm_settings_for_thread_analysis": {
-        "service_preference": "gemini",
-        "model_name_override": "gemini-2.5-flash",
-        "max_tokens": 50,
+        "max_tokens": 300,
         "temperature": 0.1
-      }
+      },
+      "enable_keyword_retweets": false,
+      "max_retweets_per_keyword_run": 0,
+      "enable_community_engagement": false,
+      "enable_community_likes": false,
+      "enable_community_retweets": false,
+      "max_community_engagements_per_run": 0,
+      "enable_community_replies": false,
+      "max_community_replies_per_run": 0,
+      "community_reply_only_recent_tweets_hours": 8
     }
   },
   "logging": {
@@ -71,14 +75,14 @@
   },
   "browser_settings": {
     "type": "chrome",
-    "headless": false,
+    "headless": true,
     "user_agent_generation": "random",
     "custom_user_agent": null,
     "proxy": null,
     "window_size": "1920,1080",
     "use_undetected_chromedriver": true,
-    "enable_stealth": false,
-    "login_wait_seconds": 60,
+    "enable_stealth": true,
+    "login_wait_seconds": 0,
     "cookie_domain_url": "https://x.com",
     "driver_options": [
       "--no-sandbox",
@@ -90,19 +94,14 @@
       "--disable-popup-blocking"
     ],
     "page_load_timeout_seconds": 30,
-    "script_timeout_seconds": 30,
-    "proxy_pools": {
-      "residential_eu": [
-        "http://user:${RESI_PASS}@eu1.proxy.local:8080",
-        "http://user:${RESI_PASS}@eu2.proxy.local:8080"
-      ]
-    },
-    "proxy_pool_strategy": "hash",
-    "proxy_pool_state_file": "data/proxy_pools_state.json"
+    "script_timeout_seconds": 30
   },
   "llm": {
     "api_key": "",
     "base_url": "",
-    "model": "gpt-4o-mini"
+    "model": "gpt-5-nano"
+  },
+  "mcp": {
+    "draft_mode": false
   }
 }
