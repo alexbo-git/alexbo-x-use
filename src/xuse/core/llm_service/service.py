@@ -74,6 +74,10 @@ class LLMService:
                     "seed",
                 ):
                     call_params.pop(unsupported_param, None)
+                # These early GPT-5 reasoning models default to medium effort,
+                # which is wasteful for short X replies and can consume the
+                # completion budget before emitting visible text.
+                call_params.setdefault("reasoning_effort", "minimal")
         else:
             call_params.setdefault("max_tokens", 1200)
             token_param = "max_tokens"
