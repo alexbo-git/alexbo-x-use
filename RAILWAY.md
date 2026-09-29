@@ -82,3 +82,19 @@ Normal operation requires no daily action. Use Railway to:
 - replace expired X cookies
 
 State survives deployments through the `/app/data` volume.
+
+## Web admin
+
+Set `ADMIN_PASSWORD` in Railway Variables, then enable Railway Public Networking / Generate Domain.
+
+Open the generated URL. The browser will ask for HTTP Basic credentials:
+- username: anything (for example `admin`)
+- password: the exact value of `ADMIN_PASSWORD`
+
+Available controls:
+- dashboard: `/`
+- machine-readable status: `/status`
+- health check without auth: `/health`
+- buttons: Run now, Pause, Resume
+
+The admin never exposes X cookies or the OpenAI key.
