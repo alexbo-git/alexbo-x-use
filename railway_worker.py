@@ -22,6 +22,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from selenium.webdriver.common.by import By
+from xuse.core.browser_manager import BrowserManager
+
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 COOKIE_DIR = DATA_DIR / "cookies"
@@ -30,11 +33,13 @@ CONFIG_DIR = ROOT / "config"
 STATE_FILE = DATA_DIR / "worker_state.json"
 CONTROL_FILE = DATA_DIR / "worker_control.json"
 ACCOUNT_FILE = CONFIG_DIR / "accounts.json"
+GROWTH_DIR = DATA_DIR / "growth"
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "").strip()
 PORT = int(os.getenv("PORT", "8080"))
 
 ACCOUNT_ID = os.getenv("X_ACCOUNT_ID", "kalyvox").strip() or "kalyvox"
+GROWTH_FILE = GROWTH_DIR / f"{ACCOUNT_ID}.jsonl"
 TZ = ZoneInfo(os.getenv("WORKER_TIMEZONE", "Europe/Paris"))
 START_HOUR = int(os.getenv("WORKER_START_HOUR", "8"))
 END_HOUR = int(os.getenv("WORKER_END_HOUR", "22"))
@@ -273,6 +278,7 @@ def load_state() -> dict:
         "cycles": 0,
         "pause_until": None,
         "lanes": {},
+        "growth_snapshot_date": None,
     }
     if not STATE_FILE.exists():
         return default
@@ -374,6 +380,156 @@ def _auth_ok(header: str | None) -> bool:
         return False
 
 
+
+def _parse_social_count(text: str | None) -> int | None:
+    if not text:
+        return None
+    s = text.strip().replace(",", "").replace("\u202f", "").replace(" ", "")
+    import re
+    m = re.search(r"([0-9]+(?:\.[0-9]+)?)([KkMm]?)", s)
+    if not m:
+        return None
+    value = float(m.group(1))
+    suffix = m.group(2).lower()
+    if suffix == "k":
+        value *= 1_000
+    elif suffix == "m":
+        value *= 1_000_000
+    return int(round(value))
+
+
+def read_growth_history(limit: int = 60) -> list[dict]:
+    if not GROWTH_FILE.exists():
+        return []
+    try:
+        rows = []
+        for line in GROWTH_FILE.read_text(encoding="utf-8").splitlines():
+            try:
+                rows.append(json.loads(line))
+            except Exception:
+                continue
+        return rows[-max(1, limit):]
+    except Exception:
+        log.exception("Could not read growth history")
+        return []
+
+
+def _append_growth_snapshot(snapshot: dict) -> None:
+    GROWTH_DIR.mkdir(parents=True, exist_ok=True)
+    history = read_growth_history(500)
+    today = snapshot.get("date")
+    # Keep one latest snapshot per local day to make 1d/7d comparisons stable.
+    if history and history[-1].get("date") == today:
+        history[-1] = snapshot
+        GROWTH_FILE.write_text(
+            "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in history),
+            encoding="utf-8",
+        )
+        return
+    with GROWTH_FILE.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(snapshot, ensure_ascii=False) + "\n")
+
+
+def capture_growth_snapshot(cookie_path: Path) -> dict | None:
+    account = {
+        "account_id": ACCOUNT_ID,
+        "is_active": True,
+        "cookie_file_path": str(cookie_path.relative_to(ROOT)),
+        "proxy": os.getenv("X_PROXY") or None,
+    }
+    manager = BrowserManager(account_config=account)
+    try:
+        driver = manager.get_driver()
+        handle = (os.getenv("X_HANDLE") or manager.logged_in_handle or "").strip().lstrip("@")
+        if not handle:
+            log.warning("Growth snapshot skipped: could not determine X handle; set X_HANDLE if needed")
+            return None
+
+        driver.get(f"https://x.com/{handle}")
+        time.sleep(2)
+
+        followers = None
+        following = None
+        for anchor in driver.find_elements(By.XPATH, "//a[@href]"):
+            href = anchor.get_attribute("href") or ""
+            text_value = anchor.text or anchor.get_attribute("aria-label") or ""
+            if href.rstrip("/").endswith(f"/{handle}/followers"):
+                followers = _parse_social_count(text_value)
+            elif href.rstrip("/").endswith(f"/{handle}/following"):
+                following = _parse_social_count(text_value)
+
+        if followers is None:
+            # X sometimes points the count link at verified_followers.
+            for anchor in driver.find_elements(By.XPATH, "//a[contains(@href, '/verified_followers')]"):
+                followers = _parse_social_count(anchor.text or anchor.get_attribute("aria-label"))
+                if followers is not None:
+                    break
+
+        if followers is None and following is None:
+            log.warning("Growth snapshot could not parse followers/following from profile")
+            return None
+
+        snapshot = {
+            "ts": datetime.now(TZ).isoformat(),
+            "date": datetime.now(TZ).date().isoformat(),
+            "handle": handle,
+            "followers": followers,
+            "following": following,
+            "replies_total": read_metrics().get("replies", 0),
+            "likes_total": read_metrics().get("likes", 0),
+        }
+        _append_growth_snapshot(snapshot)
+        log.info("Growth snapshot: followers=%s following=%s", followers, following)
+        return snapshot
+    except Exception:
+        log.exception("Growth snapshot failed")
+        return None
+    finally:
+        manager.close_driver()
+
+
+def growth_summary() -> dict:
+    history = read_growth_history(60)
+    if not history:
+        return {
+            "current": None,
+            "delta_1d": None,
+            "delta_7d": None,
+            "followers_per_10_replies_7d": None,
+            "history": [],
+        }
+
+    current = history[-1]
+
+    def baseline(days: int) -> dict | None:
+        target = datetime.now(TZ).date() - timedelta(days=days)
+        candidates = [row for row in history if row.get("date") <= target.isoformat()]
+        return candidates[-1] if candidates else None
+
+    b1 = baseline(1)
+    b7 = baseline(7)
+
+    def follower_delta(base):
+        if not base or current.get("followers") is None or base.get("followers") is None:
+            return None
+        return int(current["followers"]) - int(base["followers"])
+
+    delta7 = follower_delta(b7)
+    eff = None
+    if b7 and delta7 is not None:
+        replies_delta = int(current.get("replies_total", 0)) - int(b7.get("replies_total", 0))
+        if replies_delta > 0:
+            eff = round(delta7 * 10 / replies_delta, 2)
+
+    return {
+        "current": current,
+        "delta_1d": follower_delta(b1),
+        "delta_7d": delta7,
+        "followers_per_10_replies_7d": eff,
+        "history": history[-30:],
+    }
+
+
 def read_activity(limit: int = 50) -> list[dict]:
     path = DATA_DIR / "activity" / f"{ACCOUNT_ID}.jsonl"
     if not path.exists():
@@ -420,6 +576,7 @@ def _dashboard_payload() -> dict:
             name: {"weight": cfg["weight"], "reply_cap": cfg["reply_cap"]}
             for name, cfg in lane_definitions().items()
         },
+        "growth": growth_summary(),
     }
 
 
@@ -462,6 +619,9 @@ class AdminHandler(BaseHTTPRequestHandler):
         if self.path == "/activity":
             self._json({"activity": read_activity(100)})
             return
+        if self.path == "/growth":
+            self._json(growth_summary())
+            return
         if self.path != "/":
             self._json({"error": "not found"}, 404)
             return
@@ -488,6 +648,21 @@ code{{word-break:break-word}}
 <div class="card"><small>Likes today</small><div class="big">{p["today"]["likes"]} / {LIKE_TARGET}</div></div>
 <div class="card"><small>Cycles</small><div class="big">{p["today"]["cycles"]}</div></div>
 <div class="card"><small>Errors today</small><div class="big">{p["today"]["errors"]}</div></div>
+</div>
+<div class="card"><small>Growth</small>
+<div class="grid" style="margin-top:10px">
+<div><small>Followers</small><div class="big">{(p["growth"]["current"] or {}).get("followers", "—")}</div></div>
+<div><small>Δ 1 day</small><div class="big">{p["growth"]["delta_1d"] if p["growth"]["delta_1d"] is not None else "—"}</div></div>
+<div><small>Δ 7 days</small><div class="big">{p["growth"]["delta_7d"] if p["growth"]["delta_7d"] is not None else "—"}</div></div>
+<div><small>Followers / 10 replies (7d)</small><div class="big">{p["growth"]["followers_per_10_replies_7d"] if p["growth"]["followers_per_10_replies_7d"] is not None else "—"}</div></div>
+</div>
+<div style="margin-top:10px"><small>30d history</small><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;margin-top:6px">
+<tr><th align="left">Date</th><th align="right">Followers</th><th align="right">Following</th></tr>
+{"".join(
+    f'<tr><td>{html.escape(str(row.get("date","")))}</td><td align="right">{html.escape(str(row.get("followers","—")))}</td><td align="right">{html.escape(str(row.get("following","—")))}</td></tr>'
+    for row in reversed(p["growth"]["history"][-10:])
+)}
+</table></div></div>
 </div>
 <div class="card"><small>Current keywords</small><p><code>{html.escape(kws)}</code></p></div>
 <div class="card"><small>Lane mix today</small>
@@ -612,6 +787,12 @@ def main() -> None:
             log.info("Outside active window; sleeping %.1f minutes", sleep_s / 60)
             interruptible_sleep(min(sleep_s, 1800))
             continue
+
+        today_iso = now.date().isoformat()
+        if state.get("growth_snapshot_date") != today_iso:
+            if capture_growth_snapshot(cookie_path):
+                state["growth_snapshot_date"] = today_iso
+                save_state(state)
 
         if state["replies"] >= REPLY_TARGET and state["likes"] >= LIKE_TARGET:
             log.info(
